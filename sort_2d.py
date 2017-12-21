@@ -10,6 +10,9 @@ import numpy as np
 #import matplotlib.pyplot as plt
 from OpenEphys import loadSpikes
 import tkFileDialog
+import wave_cut
+import avg_waves
+import time_plots
 
 #import matplotlib.pyplot as plt
 from matplotlib.widgets import LassoSelector
@@ -29,70 +32,167 @@ def find_valleys(waveforms):
     
     return valleys
 
-def plot_it(param,num_spikes,gui):
-    cs=['xkcd:grey','xkcd:red','xkcd:beige','xkcd:green','xkcd:sky blue','xkcd:pink','xkcd:lime green','xkcd:magenta']
-    clust_colors = mplcolors.ListedColormap(cs)
-    norm=mplcolors.Normalize(vmin=0,vmax=len(cs)-1)
+def draw_plots(param,clusts,clust_colors,norm,self):
     
-    gui.lines,gui.axes=draw_plots(param,gui.clusts,clust_colors,norm,gui)
+    plot = self.paramplot
+    
+    subplots = [0,0,0,0,0,0]
+    if plot=='all':
+        subplots = [231,232,233,234,235,236]
+    else:
+        subplots[plot-1] = 111
+    
+    if plot == 1 or plot == 'all':
         
-    gui.points1=np.vstack((param[0],param[1])).T
-    gui.points2=np.vstack((param[0],param[2])).T
-    gui.points3=np.vstack((param[0],param[3])).T
-    gui.points4=np.vstack((param[1],param[2])).T
-    gui.points5=np.vstack((param[1],param[3])).T
-    gui.points6=np.vstack((param[2],param[3])).T
-    
-    gui.lasso1 = LassoSelector(gui.axes[0], gui.onselect1)
-    gui.lasso2 = LassoSelector(gui.axes[1], gui.onselect2)
-    gui.lasso3 = LassoSelector(gui.axes[2], gui.onselect3)
-    gui.lasso4 = LassoSelector(gui.axes[3], gui.onselect4)
-    gui.lasso5 = LassoSelector(gui.axes[4], gui.onselect5)
-    gui.lasso6 = LassoSelector(gui.axes[5], gui.onselect6)
-
-def draw_plots(param,clusts,clust_colors,norm,gui):
-    
-    ax1 = gui.mainfigure.add_subplot(231)
-    ax1.set_title('0x1')
-    line1=ax1.scatter(param[0],param[1],c=clusts,cmap=clust_colors,norm=norm,s=.2)
-    ax1.set_aspect('equal')
-    
-    ax2 = gui.mainfigure.add_subplot(232)
-    ax2.set_title('0x2')
-    line2=ax2.scatter(param[0],param[2],c=clusts,cmap=clust_colors,norm=norm,s=.2)
-    ax2.set_aspect('equal')
-    
-    ax3 = gui.mainfigure.add_subplot(233)
-    ax3.set_title('0x3')
-    line3=ax3.scatter(param[0],param[3],c=clusts,cmap=clust_colors,norm=norm,s=.2)
-    ax3.set_aspect('equal')
-    
-    ax4 = gui.mainfigure.add_subplot(234)
-    ax4.set_title('1x2')
-    line4=ax4.scatter(param[1],param[2],c=clusts,cmap=clust_colors,norm=norm,s=.2)
-    ax4.set_aspect('equal')
-    
-    ax5 = gui.mainfigure.add_subplot(235)
-    ax5.set_title('1x3')
-    line5=ax5.scatter(param[1],param[3],c=clusts,cmap=clust_colors,norm=norm,s=.2)
-    ax5.set_aspect('equal')
-    
-    ax6 = gui.mainfigure.add_subplot(236)
-    ax6.set_title('2x3')
-    line6=ax6.scatter(param[2],param[3],c=clusts,cmap=clust_colors,norm=norm,s=.2)
-    ax6.set_aspect('equal')
-    
-    gui.mainfigure.tight_layout()
-    gui.maincanvas.draw()
-    
-    lines = [line1,line2,line3,line4,line5,line6]
-    axes = [ax1,ax2,ax3,ax4,ax5,ax6]
-    
-    return lines,axes
-
-def update_colors(lines,colors):
-    for line in lines:
-        line.set_array(colors)
+        ax1 = self.plot_figs['param_view'].add_subplot(subplots[0])
+        ax1.set_title('0x1')
+        line1=ax1.scatter(param[0],param[1],c=clusts,cmap=clust_colors,norm=norm,s=.2)
+        ax1.set_aspect('equal')
+        if plot == 1:
+            self.lines=[line1]
+            self.axes=[ax1]
         
-    return lines
+        self.points1=np.vstack((param[0],param[1])).T
+        self.lasso1 = LassoSelector(ax1, lambda verts: onselect(self,verts,self.points1))
+        
+    if plot == 2 or plot == 'all':
+        ax2 = self.plot_figs['param_view'].add_subplot(subplots[1])
+        ax2.set_title('0x2')
+        line2=ax2.scatter(param[0],param[2],c=clusts,cmap=clust_colors,norm=norm,s=.2)
+        ax2.set_aspect('equal')
+        if plot == 2:
+            self.lines=[line2]
+            self.axes=[ax2]
+        
+        self.points2=np.vstack((param[0],param[2])).T
+        self.lasso2 = LassoSelector(ax2, lambda verts: onselect(self,verts,self.points2))
+    
+    if plot == 3 or plot == 'all':
+        ax3 = self.plot_figs['param_view'].add_subplot(subplots[2])
+        ax3.set_title('0x3')
+        line3=ax3.scatter(param[0],param[3],c=clusts,cmap=clust_colors,norm=norm,s=.2)
+        ax3.set_aspect('equal')
+        if plot == 3:
+            self.lines=[line3]
+            self.axes=[ax3]
+        
+        self.points3=np.vstack((param[0],param[3])).T
+        self.lasso3 = LassoSelector(ax3, lambda verts: onselect(self,verts,self.points3))
+    
+    if plot == 4 or plot == 'all':
+        ax4 = self.plot_figs['param_view'].add_subplot(subplots[3])
+        ax4.set_title('1x2')
+        line4=ax4.scatter(param[1],param[2],c=clusts,cmap=clust_colors,norm=norm,s=.2)
+        ax4.set_aspect('equal')
+        if plot == 4:
+            self.lines=[line4]
+            self.axes=[ax4]
+        
+        self.points4=np.vstack((param[1],param[2])).T
+        self.lasso4 = LassoSelector(ax4, lambda verts: onselect(self,verts,self.points4))
+    
+    if plot == 5 or plot == 'all':
+        ax5 = self.plot_figs['param_view'].add_subplot(subplots[4])
+        ax5.set_title('1x3')
+        line5=ax5.scatter(param[1],param[3],c=clusts,cmap=clust_colors,norm=norm,s=.2)
+        ax5.set_aspect('equal')
+        if plot == 5:
+            self.lines=[line5]
+            self.axes=[ax5]
+        
+        self.points5=np.vstack((param[1],param[3])).T
+        self.lasso5 = LassoSelector(ax5, lambda verts: onselect(self,verts,self.points5))
+    
+    if plot == 6 or plot == 'all':
+        ax6 = self.plot_figs['param_view'].add_subplot(subplots[5])
+        ax6.set_title('2x3')
+        line6=ax6.scatter(param[2],param[3],c=clusts,cmap=clust_colors,norm=norm,s=.2)
+        ax6.set_aspect('equal')
+        if plot == 6:
+            self.lines=[line6]
+            self.axes=[ax6]
+        
+        self.points6=np.vstack((param[2],param[3])).T
+        self.lasso6 = LassoSelector(ax6, lambda verts: onselect(self,verts,self.points6))
+    
+    if plot == 'all':
+        self.plot_figs['param_view'].tight_layout(pad=0)
+        self.lines = [line1,line2,line3,line4,line5,line6]
+        self.axes = [ax1,ax2,ax3,ax4,ax5,ax6]
+        
+    self.plot_figs['param_view'].canvas.draw()
+    
+def update_colors(self):
+    for line in self.lines:
+        line.set_array(self.clusts)
 
+def plot_peaks(self):
+    self.param = self.peaks
+    self.plot_figs['param_view'].clear()
+    draw_plots(self.param,self.clusts,self.clust_colors,self.norm,self)
+
+def plot_valleys(self):
+    self.param = self.valleys
+    self.plot_figs['param_view'].clear()
+    draw_plots(self.param,self.clusts,self.clust_colors,self.norm,self)
+
+def plot_energy(self):
+    self.param = self.energy
+    self.plot_figs['param_view'].clear()
+    draw_plots(self.param,self.clusts,self.clust_colors,self.norm,self)
+
+def on_click(self,event):
+    if event.dblclick:
+        if self.paramplot == 'all':
+            ax = event.inaxes
+            try:
+                self.paramplot = self.axes.index(ax)+1
+                self.plot_figs['param_view'].clear()
+                draw_plots(self.param,self.clusts,self.clust_colors,self.norm,self)
+            except:
+                pass
+
+        else:
+            self.plot_figs['param_view'].clear()
+            self.paramplot = 'all'
+            draw_plots(self.param,self.clusts,self.clust_colors,self.norm,self)
+
+    
+def onselect(self,verts,points):
+    if len(self.checked_clusts) == 1:
+        current_clust = int(self.checked_clusts[0])
+        
+        print current_clust
+        print self.clusts
+        
+        print np.where(self.clusts == 2)
+        
+        p = path.Path(verts)
+        ind = p.contains_points(points, radius=0)
+        if np.isin(current_clust,self.clusts):
+            new_spikes = np.zeros(len(self.clusts),dtype=np.int)
+            new_spikes = np.where(ind == True)[0]
+            old_spikes = np.where(self.clusts == current_clust)[0]
+            overlap = np.intersect1d(old_spikes,new_spikes)
+            if len(overlap) > 0:
+                self.clusts[old_spikes] = 0
+                self.clusts[overlap] = current_clust
+        else:
+            self.clusts[ind] = current_clust
+            
+        update_colors(self)
+        self.cluster_dict[str(current_clust)] = [index for index, clust in enumerate(self.clusts) if clust == current_clust]
+
+        for channel in range(len(self.waveforms)):
+            new_waves = self.waveforms[channel][self.cluster_dict[str(current_clust)]]
+            self.wave_dict[str(channel)][str(current_clust)] = new_waves
+            
+        wave_cut.plot_waveforms(self.waveforms,self)
+
+        avg_waves.refresh_avg_waves(self)
+        avg_waves.plot_avg_waves(self)
+        
+        time_plots.refresh_times(self)
+        time_plots.plot_isi(self)
+        
+        self.plot_figs['param_view'].canvas.draw_idle()

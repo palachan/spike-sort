@@ -273,7 +273,7 @@ def loadSpikes(filepath):
     
     print 'loading spikes...'
     
-    f = open(filepath,'rb')
+    f = open(filepath,'wb')
     header = readHeader(f)
     
 #    if float(header[' version']) < 0.4:

@@ -64,7 +64,6 @@ def onpick(event):
     ax2.scatter(x2,y2,c=colors)
     pix = np.vstack((x2,y2)).T
 
-
 fig.canvas.mpl_connect('pick_event', onpick)
 
 lasso = LassoSelector(ax2, onselect)
