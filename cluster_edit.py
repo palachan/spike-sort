@@ -9,7 +9,10 @@ handles cluster stuff, like adding, deleting, merging, etc.
 
 import copy
 import numpy as np
-from PySide.QtGui import QPushButton,QKeySequence
+import numba as nb
+import time
+from scipy.stats import chi2
+from PySide.QtGui import QPushButton,QKeySequence,QLabel
 
 def new_cluster(self,init=False):
     
@@ -38,16 +41,35 @@ def new_cluster(self,init=False):
     
     self.clust_buttons[str(this_clust)].setShortcut(QKeySequence(str(this_clust)))
     
+    self.clust_labels[str(this_clust)] = None
+    
     self.checked_clusts = [this_clust]
+    
+    if not init:
+        self.lratios[str(this_clust)],self.iso_dists[str(this_clust)] = [np.nan,np.nan]
+    else:
+        self.lratios[str(this_clust)],self.iso_dists[str(this_clust)] = calc_l_ratio(self.all_points,self.cluster_dict[str(this_clust)])
     
     if not init:
         change_cluster(self)
             
 def change_cluster(self):
+    
     self.checked_clusts = []
     for key in self.clust_buttons:
         if self.clust_buttons[key].isChecked():
             self.checked_clusts.append(key)
+
+    for key in self.clust_labels:
+        if self.clust_labels[key] is not None and key not in self.checked_clusts:
+            self.clust_labels[key].setText('')
+            self.params_layout.removeWidget(self.clust_labels[key])
+            self.clust_labels[key] = None
+        elif self.clust_labels[key] is not None and key in self.checked_clusts:
+            self.clust_labels[key].setText('Cluster %s: %d spikes \n Lratio: %f \n Iso Dist: %f' % (key,len(self.cluster_dict[key]),self.lratios[key],self.iso_dists[key]))
+        elif self.clust_labels[key] is None and key in self.checked_clusts:
+            self.clust_labels[key] = QLabel('Cluster %s: %d spikes \n Lratio: %f \n Iso Dist: %f' % (key,len(self.cluster_dict[key]),self.lratios[key],self.iso_dists[key]))
+            self.params_layout.addWidget(self.clust_labels[key])
             
     refresh_plots(self)
     
@@ -61,12 +83,11 @@ def delete_cluster(self):
             del self.cluster_dict[key]
             del self.isi_dict[key]
             
-#            self.canvasisi.hist_dict[key].parent = None
-            
+            if self.clust_labels[str(key)] is not None:
+                self.params_layout.removeWidget(self.clust_labels[str(key)])
+                
             del self.timestamp_dict[key]
-            
-#            self.reinit_isi()
-            
+                        
             for channel in range(len(self.waveforms)):
                 del self.wave_dict[str(channel)][str(key)]
                 del self.wavepoint_dict[str(channel)][str(key)]
@@ -108,7 +129,6 @@ def shift_clusters(self):
         new_buttons[str(count)].setText(str(count))
         new_buttons[str(count)].setStyleSheet('QPushButton {background-color: %s}' % self.cs[count])
         
-        
         self.clusts[self.clusts == int(key)] = int(count)
         count += 1
         
@@ -125,11 +145,12 @@ def shift_clusters(self):
     for key in range(1,count):
         self.clusters_layout.addWidget(self.clust_buttons[str(key)])
         self.clust_buttons[str(key)].setShortcut(QKeySequence(str(key)))
+            
         
     change_cluster(self)
         
 def refresh_plots(self):
-    
+        
     self.cluster_dict[str(0)] = [index for index,value in enumerate(self.clusts) if value==0]
 
     self.canvaswaves.update_plots()
@@ -160,14 +181,10 @@ def merge_clusters(self):
             del self.cluster_dict[str(key)]
             del self.isi_dict[str(key)]
             
-            
-            
-#            self.canvasisi.hist_dict[str(key)].parent = None
-#            self.canvasisi.view.update()
-            
             del self.timestamp_dict[str(key)]
             
-            
+            if self.clust_labels[str(key)] is not None:
+                self.params_layout.removeWidget(self.clust_labels[str(key)])
             
             for channel in range(len(self.waveforms)):
                 del self.wave_dict[str(channel)][str(key)]
@@ -178,6 +195,9 @@ def merge_clusters(self):
     
     self.cluster_dict[str(new_clust)] = [index for index, clust in enumerate(self.clusts) if clust == new_clust]
 
+    self.lratios[str(new_clust)],self.iso_dists[str(new_clust)] = calc_l_ratio(self.all_points,self.cluster_dict[str(new_clust)])
+
+
     for channel in range(len(self.waveforms)):
         new_waves = self.waveforms[channel][self.cluster_dict[str(new_clust)]]
         self.wave_dict[str(channel)][str(new_clust)] = new_waves
@@ -185,5 +205,41 @@ def merge_clusters(self):
     self.checked_clusts = [new_clust]
     
     shift_clusters(self)
+    
+def calc_l_ratio(all_points,clust_inds):
+          
+    points = all_points[:,clust_inds]
+    mean_points = np.mean(np.swapaxes(points,0,1),axis=0)
+    cov_matrix = np.cov(points)
+        
+    #use SVD to get inverse of covariance matrix in case it's too singular (which
+    #will happen if we have shorted wires and the corresponding features are identical)
+    u,s,v = np.linalg.svd(cov_matrix)
+    invcov = np.dot(np.dot(v.T,np.linalg.inv(np.diagflat(s))),u.T)
+
+    other_points = np.swapaxes(np.delete(all_points,clust_inds,axis=1),0,1)
+    
+    noise_dists = np.zeros(len(other_points),dtype=np.float)
+        
+    for i in range(len(other_points)):
+        diff = other_points[i] - mean_points
+        
+        mdist = np.dot(np.dot(diff.T,invcov),diff)
+        noise_dists[i] = np.float(mdist)
+
+    noise_dists = np.sort(noise_dists)
+    lratio = np.sum(chi2.sf(noise_dists,df=8))/len(clust_inds)
+
+    if len(noise_dists) > len(clust_inds):
+        iso_distance = noise_dists[len(clust_inds)-1]
+    else:
+        iso_distance = np.nan
+        
+
+    
+    return lratio,iso_distance
+        
+    
+    
     
     

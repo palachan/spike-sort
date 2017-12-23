@@ -22,14 +22,16 @@ import sort_3d
 import sort_waves
 import avg_waves
 import time_plots
-from scipy.stats import iqr
+from scipy.stats import iqr,zscore
 import copy
 import shutil
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import scale
 
 from PySide.QtCore import QRect,Qt
 from PySide.QtGui import (QApplication, QMainWindow, QFrame, QLabel, QKeySequence,
-                          QVBoxLayout, QHBoxLayout, QGridLayout, QShortcut,
-                          QMenuBar, QMenu, QPushButton, QFileDialog, QDesktopWidget)
+                          QVBoxLayout, QHBoxLayout, QGridLayout, QShortcut, QWidget,
+                          QMenuBar, QMenu, QPushButton, QFileDialog, QDesktopWidget, QComboBox)
 
 
 #class for MainWindow instance
@@ -67,6 +69,7 @@ class MainWindow(QMainWindow):
         
         self.setup_file_menu()
         self.setup_view_menu()
+        self.setup_param_menu()
 
         self.new_button.clicked.connect(lambda: cluster_edit.new_cluster(self))
         self.delete_button.clicked.connect(lambda: cluster_edit.delete_cluster(self))
@@ -76,6 +79,7 @@ class MainWindow(QMainWindow):
         self.canv_list = [self.plot_layout,self.plot_layout_top,self.plot_layout_mid,self.plot_layout_low]
         self.canv_labels = [self.canvas_label,self.canvas_label_top,self.canvas_label_mid,self.canvas_label_low]
         self.params = ['Peaks 1','Peaks 2','Peaks 3','Peaks 4','Valleys 1','Valleys 2','Valleys 3','Valleys 4']
+        self.paramchoices = ['Peaks','Valleys','Energy','PC1','PC2','PC3','Real PC1']
         self.cs=['white','red','beige','green','skyblue','pink','limegreen','magenta','blue','purple','orange','yellow','fuchsia','greenyellow','mintcream','orchid']
         self.cs += self.cs
         
@@ -104,8 +108,8 @@ class MainWindow(QMainWindow):
         valley_iqr = abs(iqr(self.valleys.flatten()))
         min_val = np.mean(self.valleys.flatten()) - 5*valley_iqr
         self.valleys = np.clip(self.valleys,min_val,0)
-
-        self.energy = self.peaks**2
+        
+        self.energy = np.sqrt(np.sum(waveforms**2,axis=2))/len(waveforms[0,0,:])
         
         self.num_spikes = len(waveforms)
         self.wavepoints = np.swapaxes(spike_data['spikes'],0,2)
@@ -114,6 +118,16 @@ class MainWindow(QMainWindow):
         self.canvas_label_top.setText('Waveforms')
         self.canvas_label_mid.setText('Avg Waveforms')
         self.canvas_label_low.setText('ISI Histogram')
+        
+        if self.set_up:
+            for label in self.clust_labels:
+                if self.clust_labels[label] is not None:
+                    self.clust_labels[label].setText('')
+                    self.params_layout.removeWidget(self.clust_labels[label])
+        
+        self.calc_principal_components()
+        
+        self.energy = self.energy**2
         
         self.checked_clusts = []
         self.tot_clusts = 0
@@ -126,6 +140,9 @@ class MainWindow(QMainWindow):
         self.isi_dict = {}
         self.timestamp_dict = {}
         self.wave_sem_dict = {}
+        self.clust_labels = {}
+        self.lratios = {}
+        self.iso_dists = {}
         
         for channel in range(len(self.waveforms)):
             self.wave_dict[str(channel)] = {}
@@ -173,16 +190,126 @@ class MainWindow(QMainWindow):
         
         if not self.set_up:
             self.setup_shortcuts()
-            self.viewMenu.addAction('&Time plot', self.canvasisi.plot_time, 'Ctrl+F4')
         
         self.param1count = 0
-        self.param2count = 0
-        self.param3count = 0
+        self.param2count = 1
+        self.param3count = 2
+        
+        self.canvas3d.get_spike_positions(self.param1count,self.param2count,self.param3count)
+        
+        if not self.set_up:
+            spacer = QLabel('---------------------------')
+            self.params_layout.addWidget(spacer)
         
         cluster_edit.shift_clusters(self)
         
         self.set_up = True
         
+    def calc_principal_components(self):
+        
+        self.pc1 = np.swapaxes(np.zeros_like(self.peaks),0,1)
+        self.pc2 = np.swapaxes(np.zeros_like(self.peaks),0,1)
+        self.pc3 = np.swapaxes(np.zeros_like(self.peaks),0,1)
+                
+        broadcasted_energies = np.zeros_like(self.waveforms[0,:])
+                
+        for channel in range(len(self.waveforms)):
+            energies = copy.deepcopy(self.energy[:,channel])
+            for i in range(len(broadcasted_energies)):
+                for j in range(len(broadcasted_energies[i])):
+                    broadcasted_energies[i][j] = energies[i]
+                    if energies[i] == 0:
+                        broadcasted_energies[i][j] = 1            
+            pca=PCA(n_components=3)
+            
+            new_vals = pca.fit_transform(self.waveforms[channel,:]/broadcasted_energies)
+            self.pc1[channel] = new_vals[:,0]
+            self.pc2[channel] = new_vals[:,1]
+            self.pc3[channel] = new_vals[:,2]
+         
+        point_energies = np.swapaxes(self.energy,0,1)
+        
+        self.all_points = np.zeros((8,len(self.pc1[0])))
+        self.all_points[0] = point_energies[0]
+        self.all_points[1] = point_energies[1]
+        self.all_points[2] = point_energies[2]
+        self.all_points[3] = point_energies[3]
+        self.all_points[4] = self.pc1[0]
+        self.all_points[5] = self.pc1[1]
+        self.all_points[6] = self.pc1[2]
+        self.all_points[7] = self.pc1[3]
+        
+        self.realpc1 = np.zeros_like(self.pc1)
+
+        for channel in range(len(self.waveforms)):
+            pca = PCA(n_components=1)
+            new_vals = pca.fit_transform(self.waveforms[channel,:])
+            self.realpc1[channel]=new_vals[:,0]
+            
+        self.pc1=np.swapaxes(self.pc1,0,1)
+        self.pc2=np.swapaxes(self.pc2,0,1)
+        self.pc3=np.swapaxes(self.pc3,0,1)
+        self.realpc1 = np.swapaxes(self.realpc1,0,1)
+
+    def change_params(self):
+        #create window as parentless QWidget, resize
+        self.param_window = QWidget()
+        self.param_window.resize(400, 350)
+        #set title
+        self.param_window.setWindowTitle('Select Parameters')
+        #give layout
+        windowlayout = QGridLayout(self.param_window)
+        windowlayout.setSpacing(15)
+        
+        trodenums = ['1','2','3','4']
+        
+        electrodes = {}
+        paramboxes = {}
+        
+        paramlabel = QLabel('Parameter')
+        trodelabel = QLabel('Electrode')
+        windowlayout.addWidget(paramlabel,0,1,1,1)
+        windowlayout.addWidget(trodelabel,0,2,1,1)
+        
+        for i in range(1,9):
+            label = QLabel('Param %d' % i)
+            label.setAlignment(Qt.AlignCenter)
+            windowlayout.addWidget(label,i,0,1,1)
+            
+            electrodes[str(i)] = QComboBox(self.param_window)
+            electrodes[str(i)].addItems(trodenums)
+            
+            current_channel = (self.params[i-1][len(self.params[i-1])-1])
+            current_ind = trodenums.index(current_channel)
+            electrodes[str(i)].setCurrentIndex(current_ind)
+            
+            windowlayout.addWidget(electrodes[str(i)],i,2,1,1)
+            
+            paramboxes[str(i)] = QComboBox(self.param_window)
+            paramboxes[str(i)].addItems(self.paramchoices)
+            
+            current_param = self.params[i-1][:len(self.params[i-1])-2]
+            current_ind = self.paramchoices.index(current_param)
+            paramboxes[str(i)].setCurrentIndex(current_ind)
+            
+            windowlayout.addWidget(paramboxes[str(i)],i,1,1,1)
+            
+        def select_params_and_exit(self,paramboxes,electrodes):
+            
+            for i in range(1,9):
+                self.params[i-1] = paramboxes[str(i)].currentText() + ' ' + electrodes[str(i)].currentText()
+                
+            if self.set_up:
+                self.canvas3d.get_spike_positions(self.param1count,self.param2count,self.param3count)
+                
+            self.param_window.close()
+            
+        go_button = QPushButton('OK')
+        go_button.clicked.connect(lambda: select_params_and_exit(self,paramboxes,electrodes))
+        windowlayout.addWidget(go_button,10,1,1,1)
+        
+        self.param_window.show()
+
     def setup_shortcuts(self):
         
         self.x_shortcut = QShortcut(QKeySequence('X'), self)
@@ -216,13 +343,13 @@ class MainWindow(QMainWindow):
         data['header'] = header 
         self.numChannels = int(header['num_channels'])
         numSamples = int(40) # **NOT CURRENTLY WRITTEN TO HEADER**
-        
+                
         dt = np.dtype([('eventType', np.dtype('<u1')), ('timestamps', np.dtype('<i8')), ('software_timestamp', np.dtype('<i8')),
                ('source', np.dtype('<u2')), ('numChannels', np.dtype('<u2')), ('numSamples', np.dtype('<u2')),
                ('sortedId', np.dtype('<u2')), ('electrodeId', np.dtype('<u2')), ('channel', np.dtype('<u2')), 
                ('color', np.dtype('<u1'), 3), ('pcProj', np.float32, 2), ('sampleFreq', np.dtype('<u2')), ('waveforms', np.dtype('<u2'), self.numChannels*numSamples),
                ('gain', np.float32,self.numChannels), ('thresh', np.dtype('<u2'), self.numChannels), ('recNum', np.dtype('<u2'))])
-    
+        
         #grab the data
         temp = np.fromfile(f, dt)
                 
@@ -268,7 +395,8 @@ class MainWindow(QMainWindow):
 
         file_loc = QFileDialog.getSaveFileName(self, 'Save Spike File', self.fname[0],'Openephys spike files (*.spikes)')
         
-        shutil.copyfile(self.fname[0],file_loc[0])
+        if self.fname[0] != file_loc[0]:
+            shutil.copyfile(self.fname[0],file_loc[0])
         
         numSamples = int(40) # **NOT CURRENTLY WRITTEN TO HEADER**
         
@@ -284,6 +412,7 @@ class MainWindow(QMainWindow):
         extracted['sortedId'] = self.clusts[:len(self.clusts)]
         
         extracted.flush()
+        extracted.close()
 
     def setup_file_menu(self):
         fileMenu = QMenu('&File',self)
@@ -296,6 +425,12 @@ class MainWindow(QMainWindow):
     def setup_view_menu(self):
         self.viewMenu = QMenu('&View',self)
         self.menubar.addMenu(self.viewMenu)
+        
+    def setup_param_menu(self):
+        paramMenu = QMenu('&Params',self)
+        self.menubar.addMenu(paramMenu)
+        
+        paramMenu.addAction('&Select Parameters', self.change_params, 'Ctrl+P')
 
     def setup_random_buttons(self):
         #make QFrame
@@ -347,20 +482,21 @@ class MainWindow(QMainWindow):
         params.setObjectName("paramsWidget")
         params.setStyleSheet("#paramsWidget {background-color:gray;}")
         #create and set layout
-        params_layout = QVBoxLayout()
-        params_layout.setSpacing(15)
-        params.setLayout(params_layout)
+        self.params_layout = QVBoxLayout()
+        self.params_layout.setSpacing(15)
+        params.setLayout(self.params_layout)
         #make labview checkbox
         self.param1label = QLabel()
         self.param2label = QLabel()
         self.param3label = QLabel()
+        
 
         #add to layout
-        params_layout.addWidget(params_label)        
-        params_layout.addWidget(self.param1label)
-        params_layout.addWidget(self.param2label)
-        params_layout.addWidget(self.param3label)
-        params_layout.setAlignment(Qt.AlignTop)
+        self.params_layout.addWidget(params_label)        
+        self.params_layout.addWidget(self.param1label)
+        self.params_layout.addWidget(self.param2label)
+        self.params_layout.addWidget(self.param3label)
+        self.params_layout.setAlignment(Qt.AlignTop)
             
     def setup_fullscreen_buttons(self):
         fsb1 = QFrame(self)

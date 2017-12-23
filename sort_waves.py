@@ -122,9 +122,6 @@ class WaveformScene(QtGui.QWidget):
         
         self.update_plots()
         
-    def print_message(self):
-        print('clicked!')
-        
     def update_plots(self):
         
         if self.plot == 'all':
@@ -189,16 +186,16 @@ class WaveformScene(QtGui.QWidget):
             
                 if channel==0:
                     self.waveline1.set_data(pos,color=colors)
-                    self.channel1.camera.rect = -8,1.1*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.1*np.nanmax(np.array(wave_collec,dtype=np.float))-np.nanmin(np.array(wave_collec,dtype=np.float))
+                    self.channel1.camera.rect = -8,1.2*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.2*np.nanmax(np.array(wave_collec,dtype=np.float))-1.2*np.nanmin(np.array(wave_collec,dtype=np.float))
                 elif channel==1:
                     self.waveline2.set_data(pos,color=colors)
-                    self.channel2.camera.rect = -8,1.1*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.1*np.nanmax(np.array(wave_collec,dtype=np.float))-np.nanmin(np.array(wave_collec,dtype=np.float))
+                    self.channel2.camera.rect = -8,1.2*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.2*np.nanmax(np.array(wave_collec,dtype=np.float))-1.2*np.nanmin(np.array(wave_collec,dtype=np.float))
                 elif channel==2:
                     self.waveline3.set_data(pos,color=colors)
-                    self.channel3.camera.rect = -8,1.1*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.1*np.nanmax(np.array(wave_collec,dtype=np.float))-np.nanmin(np.array(wave_collec,dtype=np.float))
+                    self.channel3.camera.rect = -8,1.2*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.2*np.nanmax(np.array(wave_collec,dtype=np.float))-1.2*np.nanmin(np.array(wave_collec,dtype=np.float))
                 elif channel==3:
                     self.waveline4.set_data(pos,color=colors)
-                    self.channel4.camera.rect = -8,1.1*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.1*np.nanmax(np.array(wave_collec,dtype=np.float))-np.nanmin(np.array(wave_collec,dtype=np.float))
+                    self.channel4.camera.rect = -8,1.2*np.nanmin(np.array(wave_collec,dtype=np.float)),40,1.2*np.nanmax(np.array(wave_collec,dtype=np.float))-1.2*np.nanmin(np.array(wave_collec,dtype=np.float))
 
         
     def on_dblclick(self, event):
@@ -290,5 +287,7 @@ class WaveformScene(QtGui.QWidget):
                 for i in range(len(self.gui.waveforms)):
                     self.gui.wave_dict[str(i)][str(current_clust)] = self.gui.waveforms[i][new_inds]
                 self.thresh_points[channel] = []
+                
+                self.gui.lratios[str(self.gui.checked_clusts[0])],self.gui.iso_dists[str(self.gui.checked_clusts[0])] = cluster_edit.calc_l_ratio(self.gui.all_points,self.gui.cluster_dict[str(self.gui.checked_clusts[0])])
     
-                cluster_edit.refresh_plots(self.gui)
+                cluster_edit.shift_clusters(self.gui)

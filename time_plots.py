@@ -37,11 +37,11 @@ class ISIScene(QtGui.QWidget):
         self.view.camera = 'panzoom'
         
         grid = visuals.GridLines(scale=(.1,.1),parent=self.view.scene)
+        vline = visuals.InfiniteLine(pos=1000,color=[1,0,0,1],vertical=True,parent=self.view.scene)
         
         self.hist_dict = {}
         
         self.refresh_times()
-        self.update_plots()
 
     def refresh_times(self):
             
@@ -52,20 +52,20 @@ class ISIScene(QtGui.QWidget):
                 for i in range(len(spike_timestamps)-1):
                     isi = spike_timestamps[i+1]-spike_timestamps[i]
                     isi *= 1000000./30000.
-                    if isi<4000:
+                    if isi<300000:
                         self.gui.isi_dict[key].append(isi)
 
                 
                 self.gui.timestamp_dict[key] = spike_timestamps
-    
+                    
             else:
                 self.gui.timestamp_dict[key] = []
                 self.gui.isi_dict[key] = []
-                
-            try:
-                self.hist_dict[key]
-            except:
-                self.hist_dict[key] = visuals.Histogram(data=self.gui.isi_dict[key],bins=50)
+#                
+#            try:
+#                self.hist_dict[key]
+#            except:
+#                self.hist_dict[key] = visuals.Histogram(data=self.gui.isi_dict[key],bins=50)
                 
             
             
@@ -92,18 +92,18 @@ class ISIScene(QtGui.QWidget):
             clust = int(clust)
             #make a histogram of the isi's
             if len(self.gui.isi_dict[str(clust)]) > 0:
-                
+                                
                 color = copy.deepcopy(self.gui.canvas3d.color_ops[clust])
                 if clust != 0:
                     color[3] = 1
+                    
 
                 self.hist_dict[str(clust)] = visuals.Histogram(data=self.gui.isi_dict[str(clust)],bins=50,color=color,parent=self.view.scene)
                 
                 max_vals.append(np.max(self.hist_dict[str(clust)].mesh_data.get_vertices()[:,1]))
-              
+
         if len(max_vals) > 0:
-            self.view.camera.rect = 800,0,4000,1.1*np.max(max_vals)
-            print max_vals
+            self.view.camera.rect = -10000,0,310000,1.1*np.max(max_vals)
                 
     def plot_time(self):
         

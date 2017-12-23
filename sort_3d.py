@@ -18,6 +18,7 @@ from vispy import scene
 import vispy.color
 import vispy.visuals
 import vispy.util
+import time
 from vispy.scene import visuals
 from matplotlib import path
 from matplotlib import colors as mcolors
@@ -66,7 +67,7 @@ class ScatterScene(QtGui.QWidget):
         self.lasso = visuals.Polygon(color=[0,0,0,0],border_color='white',border_width=4)
         self.view.add(self.lasso)
         self.view.add(self.scatter)
-        self.view.camera = 'turntable'
+        self.view.camera = 'arcball'
 #        self.view.camera.distance = 100
         
         self.change_params.connect(self.get_spike_positions)
@@ -108,6 +109,14 @@ class ScatterScene(QtGui.QWidget):
                 params[i] = self.gui.valleys
             elif params[i] == 'Energy':
                 params[i] = self.gui.energy
+            elif params[i] == 'PC1':
+                params[i] = self.gui.pc1
+            elif params[i] == 'PC2':
+                params[i] = self.gui.pc2
+            elif params[i] == 'PC3':
+                params[i] = self.gui.pc3
+            elif params[i] == 'Real PC1':
+                params[i] = self.gui.realpc1
         
         pos = np.swapaxes(np.zeros_like(self.pos),0,1)
         
@@ -133,7 +142,7 @@ class ScatterScene(QtGui.QWidget):
                     self.lasso.border_color = 'gray'
                             
     def on_mouse_release(self, event):
-        
+                
         if len(self.trail) > 3:
             
             self.screenpos = self.view.scene.transform.map(self.pos)[:,[0,1]]
@@ -163,9 +172,11 @@ class ScatterScene(QtGui.QWidget):
                         for channel in range(len(self.gui.waveforms)):
                             self.gui.wave_dict[str(channel)][str(key)] = self.gui.waveforms[channel][self.gui.cluster_dict[str(key)]]
                             self.gui.wavepoint_dict[str(channel)][str(key)] = self.gui.wavepoints[channel][:,self.gui.cluster_dict[str(key)]]
-                    
-                cluster_edit.shift_clusters(self.gui)
-                    
+
+                self.gui.lratios[str(self.gui.checked_clusts[0])],self.gui.iso_dists[str(self.gui.checked_clusts[0])] = cluster_edit.calc_l_ratio(self.gui.all_points,self.gui.cluster_dict[str(self.gui.checked_clusts[0])])
+            
+                cluster_edit.change_cluster(self.gui)
+                                                    
             self.trail = [[0,0,0],[.0000000001,.0000000001,.0000000001]]
 
             self.lasso.pos = self.trail
@@ -178,6 +189,8 @@ class ScatterScene(QtGui.QWidget):
             self.colors[np.where(self.gui.clusts==int(clust)),np.array([3])] = 1
         
         self.scatter.set_data(pos=self.pos,edge_color=None, face_color=self.colors, size=4)
+        
+        
 
 if __name__ == '__main__':
     import sys
