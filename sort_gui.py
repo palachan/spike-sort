@@ -27,7 +27,7 @@ import time_plots
 #import GUI objects/Widgets
 from PySide.QtCore import QRect,Qt
 from PySide.QtGui import (QApplication, QMainWindow, QFrame, QLabel, QKeySequence,
-                          QVBoxLayout, QHBoxLayout, QGridLayout, QShortcut, QWidget,
+                          QVBoxLayout, QHBoxLayout, QGridLayout, QShortcut, QWidget, QLineEdit,
                           QMenuBar, QMenu, QPushButton, QFileDialog, QDesktopWidget, QComboBox)
 
 #make sure we're using the right qt API
@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self.setup_random_buttons()
         self.setup_cluster_buttons()
         self.setup_fullscreen_buttons()
+        self.setup_kmeans()
 
         #connect cluster_edit buttons to their respective functions in the cluster_edit script
         self.new_button.clicked.connect(lambda: cluster_edit.new_cluster(self))
@@ -116,8 +117,8 @@ class MainWindow(QMainWindow):
         #grab the sampling rate from the file header (probably 30 kHz)
         self.samplerate = spike_data['header']['sampleRate']
         
-        #grab waveforms from the data
-        waveforms = spike_data['spikes']
+        #grab waveforms from the data, flip
+        waveforms = spike_data['spikes'] * -1
         #grab important info from the waveforms array
         self.num_spikes,self.num_samples,self.num_channels = np.shape(waveforms)
         
@@ -145,6 +146,12 @@ class MainWindow(QMainWindow):
         mean_peak = np.mean(self.peaks)
         mean_energy = np.mean(self.energy)
         self.energy *= mean_peak/mean_energy
+        #find the IQR of the energy to limit the data
+        energy_iqr = iqr(self.energy.flatten())
+        #assign a maximum energy value
+        max_val = np.mean(self.energy.flatten()) + 5*energy_iqr
+        #clip the peaks to that value
+        self.energy = np.clip(self.energy,0,max_val)
         
         #swap axes for waveforms (so shape (numchannels,numspikes,numsamples)) #TODO: necessary?
         self.waveforms = np.swapaxes(np.swapaxes(waveforms,1,2),0,1)
@@ -275,6 +282,8 @@ class MainWindow(QMainWindow):
             self.setup_shortcuts()
             #set up time plot in view menu
             self.viewMenu.addAction('&Time plot', self.canvasisi.plot_time, 'Ctrl+F4')
+            #connect the kmeans button to the kmeans function
+            self.kmeans_button.clicked.connect(lambda: cluster_edit.kmeans(self,int(self.kmeans_box.text())))
         
         #pass off to cluster_edit to take care of the rest
         cluster_edit.shift_clusters(self)
@@ -325,6 +334,45 @@ class MainWindow(QMainWindow):
             pca = PCA(n_components=1)
             new_vals = pca.fit_transform(self.waveforms[channel,:])
             self.realpc1[channel]=new_vals[:,0]
+            
+        ''' set limits for every principal component '''
+        #find the IQR of the pc to limit the data
+        pc_iqr = iqr(self.pc1.flatten())
+        #assign a maximum pc value
+        max_val = np.mean(self.pc1.flatten()) + 5*pc_iqr
+        #assign a minimum pc value
+        min_val = np.mean(self.pc1.flatten()) - 5*pc_iqr
+        #clip the pcs to that value
+        self.pc1 = np.clip(self.pc1,min_val,max_val)
+        
+        #find the IQR of the pc to limit the data
+        pc_iqr = iqr(self.pc2.flatten())
+        #assign a maximum pc value
+        max_val = np.mean(self.pc2.flatten()) + 5*pc_iqr
+        #assign a minimum pc value
+        min_val = np.mean(self.pc2.flatten()) - 5*pc_iqr
+        #clip the pcs to that value
+        self.pc2 = np.clip(self.pc2,min_val,max_val)
+        
+        #find the IQR of the pc to limit the data
+        pc_iqr = iqr(self.pc3.flatten())
+        #assign a maximum pc value
+        max_val = np.mean(self.pc3.flatten()) + 5*pc_iqr
+        #assign a minimum pc value
+        min_val = np.mean(self.pc3.flatten()) - 5*pc_iqr
+        #clip the pcs to that value
+        self.pc3 = np.clip(self.pc3,min_val,max_val)
+        
+        #find the IQR of the pc to limit the data
+        pc_iqr = iqr(self.realpc1.flatten())
+        #assign a maximum pc value
+        max_val = np.mean(self.realpc1.flatten()) + 5*pc_iqr
+        #assign a minimum pc value
+        min_val = np.mean(self.realpc1.flatten()) - 5*pc_iqr
+        #clip the pcs to that value
+        self.realpc1 = np.clip(self.realpc1,min_val,max_val)
+        
+        ''''''
 
         #set up array for lratio computing values (energy and first PC)
         self.all_points = np.zeros((8,self.num_spikes))
@@ -443,7 +491,7 @@ class MainWindow(QMainWindow):
         self.q_shortcut.activated.connect(lambda: self.canvas3d.get_spike_positions((self.param1count-1)%8,self.param2count,self.param3count))
         
     def load_spikefile(self,filename):
-        ''' loads an openephs .spikes file '''
+        ''' loads an openephys .spikes file '''
         
         #make a dict to hold relevant data
         data = {}
@@ -605,7 +653,7 @@ class MainWindow(QMainWindow):
         self.clusters_label = QLabel()
         self.clusters_label.setText('clusters')
         #set gemoetry and color
-        clusters.setGeometry(QRect(self.screen_width*.36, self.screen_height*.03, self.screen_width*.34, self.screen_height*.07))
+        clusters.setGeometry(QRect(self.screen_width*.1, self.screen_height*.03, self.screen_width*.5, self.screen_height*.07))
         clusters.setObjectName("clustersWidget")
         clusters.setStyleSheet("#clustersWidget {background-color:gray;}")
         #create and set layout
@@ -614,6 +662,33 @@ class MainWindow(QMainWindow):
         #add to layout
         self.clusters_layout.addWidget(self.clusters_label)        
         self.clusters_layout.setAlignment(Qt.AlignLeft)
+        
+    def setup_kmeans(self):
+        ''' sets up interface for performing kmeans clustering '''
+        
+        #make QFrame
+        kmeans = QFrame(self)
+        #make and set label
+        kmeans_label = QLabel()
+        kmeans_label.setText('# clusters')
+        #set gemoetry and color
+        kmeans.setGeometry(QRect(self.screen_width*.61, self.screen_height*.03, self.screen_width*.09, self.screen_height*.07))
+        kmeans.setObjectName("kmeansWidget")
+        kmeans.setStyleSheet("#kmeansWidget {background-color:gray;}")
+        #create and set layout
+        kmeans_layout = QHBoxLayout()
+        kmeans.setLayout(kmeans_layout)
+   
+        #make user interface for kmeans
+        self.kmeans_box = QLineEdit()
+        self.kmeans_button = QPushButton('KMeans')
+    
+        #add widgets to layout
+        kmeans_layout.addWidget(kmeans_label)
+        kmeans_layout.addWidget(self.kmeans_box)
+        kmeans_layout.addWidget(self.kmeans_button)
+        #set alignment
+        kmeans_layout.setAlignment(Qt.AlignLeft)
                 
     def setup_param_buttons(self):
         ''' sets up labels for showing which 3D parameters are active '''

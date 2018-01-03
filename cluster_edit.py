@@ -9,6 +9,7 @@ handles cluster stuff, like adding, deleting, merging, calculating metrics, etc.
 #import important stuff
 import numpy as np
 from scipy.stats import chi2
+from sklearn.cluster import KMeans
 
 #import GUI elements
 from PySide.QtGui import QPushButton,QKeySequence,QLabel
@@ -257,6 +258,7 @@ def calc_l_ratio(all_points,clust_inds):
             
         #use SVD to get inverse of covariance matrix in case it's too singular (which
         #will happen if we have shorted wires and the corresponding features are identical)
+        #TODO: this problem is NOT fixed
         u,s,v = np.linalg.svd(cov_matrix)
         invcov = np.dot(np.dot(v.T,np.linalg.inv(np.diagflat(s))),u.T)
     
@@ -298,3 +300,45 @@ def calc_l_ratio(all_points,clust_inds):
 
     #return our metrics
     return lratio,iso_distance
+
+def kmeans(self,num_clusts):
+    ''' perform kmeans clustering '''
+        
+    #swap axes so shape [nsamples, nfeatures]
+    datapoints = np.swapaxes(self.all_points,0,1)
+    #start a kmeans instance with requested number of clusters
+    kmeans = KMeans(n_clusters=num_clusts)
+    #assign cluster ids to each spike
+    new_clusts = kmeans.fit_predict(datapoints)
+    #make it official, increment by 1 so we're starting w cluster 1
+    self.clusts[:] = new_clusts[:] + 1
+    
+    #start over the cluster numbers
+    self.tot_clusts = 1
+    
+    #find the unique cluster numbers
+    unique = np.unique(self.clusts)
+    #for each unique cluster...
+    for oe_clust in unique:
+        #get the current cluster number (based on current number of 
+        #unique clusters)
+        clust = self.tot_clusts
+        #get spike indices for that cluster from cluster_ids  list
+        clust_inds = [index for index,value in enumerate(self.clusts) if int(value) == int(oe_clust)]
+        #assign indices to appropriate entry in cluster_dict
+        self.cluster_dict[str(clust)] = clust_inds
+        #for each channel...
+        for channel in range(self.num_channels):
+            #add waveforms to appropriate entry in wveform dicts
+            self.wave_dict[str(channel)][str(clust)] = self.waveforms[channel][self.cluster_dict[str(clust)]]
+
+        new_cluster(self,init=True)
+            
+        self.tot_clusts += 1
+        
+    #for each cluster button...
+    for button in self.clust_buttons:
+        #connect to cluster_edit 'change cluster' function
+        self.clust_buttons[button].toggled.connect(lambda: change_cluster(self))
+        
+    shift_clusters(self)
